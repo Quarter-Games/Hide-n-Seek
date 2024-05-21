@@ -10,10 +10,12 @@ using System;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using System.Collections;
+using Unity.Services.Authentication;
+using Newtonsoft.Json;
 
 namespace MultiplayerHandlers
 {
-    public class SessionHandler:IDisposable
+    public class SessionHandler : IDisposable
     {
         public Lobby ConnectedLobby;
         private Allocation _allocation = null;
@@ -21,8 +23,16 @@ namespace MultiplayerHandlers
         private NetworkDriver _driver = default;
         private NetworkConnection _connection = default;
         private NativeList<NetworkConnection> _connections = default;
-        public event Action<string> DataReceived;
+        public event Action<NetworkMessage> DataReceived;
+        public event Action PlayerConnected;
         private bool isHeartbeat = false;
+        private JsonSerializerSettings settings = new JsonSerializerSettings
+        {
+            TypeNameHandling = TypeNameHandling.All,
+            PreserveReferencesHandling = PreserveReferencesHandling.Objects,
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+            Formatting = Formatting.Indented
+        };
 
         public async Task CreateSessionAsync(string LobbyName, int MaxPlayers, CreateLobbyOptions options = null)
         {
@@ -39,6 +49,7 @@ namespace MultiplayerHandlers
             ConnectedLobby = await LobbyService.Instance.CreateLobbyAsync(LobbyName, MaxPlayers, options);
             Debug.Log("Session Created, Code: " + code);
             Bind();
+            Debug.Log($"Bound: {_driver.Bound}, Created: {_driver.IsCreated}, Listening: {_driver.Listening}");
         }
         public async Task<Lobby> JoinSessionByIdAsync(string LobbyID)
         {
@@ -46,8 +57,20 @@ namespace MultiplayerHandlers
             ConnectedLobby = await LobbyService.Instance.JoinLobbyByIdAsync(LobbyID);
             var allocationCode = ConnectedLobby.Data["AllocationCode"].Value;
 
-            Debug.Log(allocationCode);
-            _joinAllocation = await Relay.Instance.JoinAllocationAsync(allocationCode);
+            Debug.Log($"Join Code: {allocationCode}");
+            try
+            {
+                _joinAllocation = await Relay.Instance.JoinAllocationAsync(allocationCode);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError(e.Message);
+            }
+            if (_joinAllocation == null)
+            {
+                await LobbyService.Instance.RemovePlayerAsync(ConnectedLobby.Id, AuthenticationService.Instance.PlayerId);
+                return null;
+            }
             Debug.Log("Binding...");
             Bind();
             return ConnectedLobby;
@@ -118,20 +141,22 @@ namespace MultiplayerHandlers
                 }
             }
         }
-        public void SendMessage(string message)
+        public void SendMessage(NetworkMessage message, NetworkConnection except = default)
         {
+            Debug.Log($"Message: {message.data as string} Type: {message.MessageType}");
             if (_allocation == null && _joinAllocation == null) throw new System.Exception("Allocation not created");
-            DataReceived?.Invoke(message);
             if (_allocation == null)
             {
                 if (_driver.BeginSend(_connection, out var writer) == 0)
                 {
-                    writer.WriteFixedString32(message);
+                    string data = JsonConvert.SerializeObject(message, settings);
+                    writer.WriteFixedString4096(data);
                     _driver.EndSend(writer);
                 }
             }
             else
             {
+                DataReceived?.Invoke(message);
                 if (_connections.Length == 0)
                 {
                     Debug.LogError("No players connected to send messages to.");
@@ -139,17 +164,23 @@ namespace MultiplayerHandlers
                 }
                 for (int i = 0; i < _connections.Length; i++)
                 {
+                    if (_connections[i] == except) continue;
                     if (_driver.BeginSend(_connections[i], out var writer) == 0)
                     {
-                        writer.WriteFixedString32(message);
+                        string data = JsonConvert.SerializeObject(message, settings);
+                        writer.WriteFixedString4096(data);
                         _driver.EndSend(writer);
                     }
+
                 }
             }
         }
         public void UpdateLoop()
         {
-            if (!(_driver.IsCreated && _driver.Bound)) return;
+            if (!(_driver.IsCreated && _driver.Bound))
+            {
+                return;
+            }
             Debug.Log(_driver.Listening);
             _driver.ScheduleUpdate().Complete();
             if (IsHost)
@@ -167,15 +198,15 @@ namespace MultiplayerHandlers
         public void StartHeartbeat(MonoBehaviour monoBehaviour, float seconds)
         {
             isHeartbeat = true;
-            if (monoBehaviour==null)
+            if (monoBehaviour == null)
             {
                 isHeartbeat = false;
                 throw new System.Exception("MonoBehaviour not found");
             }
-            monoBehaviour.StartCoroutine(Heartbeat(ConnectedLobby.Id,seconds));
+            monoBehaviour.StartCoroutine(Heartbeat(ConnectedLobby.Id, seconds));
         }
 
-        private IEnumerator Heartbeat(string lobbyId,float seconds)
+        private IEnumerator Heartbeat(string lobbyId, float seconds)
         {
             var delay = new WaitForSecondsRealtime(seconds);
             while (isHeartbeat)
@@ -188,7 +219,6 @@ namespace MultiplayerHandlers
         {
             for (int i = 0; i < _connections.Length; i++)
             {
-                Assert.IsTrue(_connections[i].IsCreated);
 
                 ProcessEventsPerConnection(_connections[i]);
                 // Resolve event queue.
@@ -196,6 +226,7 @@ namespace MultiplayerHandlers
         }
         private void ProcessEventsPerConnection(NetworkConnection connection)
         {
+            if (connection.IsCreated == false) return;
             NetworkEvent.Type eventType;
             while ((eventType = connection.PopEvent(_driver, out var stream)) != NetworkEvent.Type.Empty)
             {
@@ -203,19 +234,22 @@ namespace MultiplayerHandlers
                 {
                     // Handle Relay events.
                     case NetworkEvent.Type.Data:
-                        var data = stream.ReadFixedString32().ToString();
-                        DataReceived?.Invoke(data);
+                        var data = JsonConvert.DeserializeObject<NetworkMessage>(stream.ReadFixedString4096().ToString(), settings);
+                        if (!IsHost) DataReceived?.Invoke(data);
+                        if (IsHost) SendMessage(data,connection);
                         break;
 
                     // Handle Connect events.
                     case NetworkEvent.Type.Connect:
                         Debug.Log("Player connected to the Host");
+                        PlayerConnected?.Invoke();
                         break;
 
                     // Handle Disconnect events.
                     case NetworkEvent.Type.Disconnect:
                         Debug.Log("Player got disconnected from the Host");
                         connection = default(NetworkConnection);
+                        Dispose();
                         break;
                     case NetworkEvent.Type.Empty:
                         Debug.Log("WTF");
@@ -259,10 +293,27 @@ namespace MultiplayerHandlers
             _allocation = null;
             _joinAllocation = null;
             isHeartbeat = false;
-
+            DataReceived = null;
         }
 
         public bool IsHost => _allocation != null;
 
+    }
+}
+[Serializable]
+public struct NetworkMessage
+{
+    public string PlayerName;
+    public string MessageType;
+    public object data;
+    public NetworkMessage(object data, string messageType)
+    {
+        PlayerName = AuthenticationService.Instance.PlayerName;
+        this.data = data;
+        MessageType = messageType;
+    }
+    public override string ToString()
+    {
+        return data.ToString();
     }
 }

@@ -3,29 +3,15 @@ using UnityEngine;
 public class PlayerController : MonoBehaviour
 {
     [SerializeField] SpriteRenderer spriteRenderer;
-    public string PlayerID;
+    public string PlayerName;
     public bool isThisPlayer;
-
+    [SerializeField] float speed = 2f;
     private void Update()
     {
         if (!isThisPlayer) return;
-        if (Input.GetKey(KeyCode.W))
-        {
-            transform.position += Vector3.up * Time.deltaTime;
-        }
-        if (Input.GetKey(KeyCode.S))
-        {
-            transform.position += Vector3.down * Time.deltaTime;
-        }
-        if (Input.GetKey(KeyCode.A))
-        {
-            transform.position += Vector3.left * Time.deltaTime;
-            spriteRenderer.flipX = true;
-        }
-        if (Input.GetKey(KeyCode.D))
-        {
-            transform.position += Vector3.right * Time.deltaTime;
-            spriteRenderer.flipX = false;
-        }
+
+        var x = Input.GetAxis("Horizontal");
+        var y = Input.GetAxis("Vertical");
+        transform.position += new Vector3(x, y, 0) * Time.deltaTime * speed;
     }
 }

@@ -31,6 +31,11 @@ public class MainMenuManager : MonoBehaviour
     {
         Debug.Log("Connecting");
         var lobby = await Handler.JoinSessionByIdAsync(LobbyUIHandler.SelectedHandler.lobby.Id);
+        if (lobby == null)
+        {
+            Debug.Log("Failed to connect to Lobby");
+            return;
+        }
         Debug.Log("Connected to Lobby, Connecting to Server...");
 
         ConnectedLobby = lobby;
