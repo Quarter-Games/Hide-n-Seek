@@ -1,3 +1,4 @@
+using MultiplayerHandlers;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -9,6 +10,7 @@ using UnityEngine.SceneManagement;
 public class Logger : MonoBehaviour
 {
     [SerializeField] TMPro.TMP_InputField inputField;
+    public static SessionHandler SessionHandler;
     private async void Awake()
     {
         await UnityServices.InitializeAsync();
@@ -29,7 +31,9 @@ public class Logger : MonoBehaviour
         Debug.Log(AuthenticationService.Instance.PlayerId);
         Debug.Log("User signed in");
         Debug.Log($"Name: {AuthenticationService.Instance.PlayerName}, ID: {AuthenticationService.Instance.PlayerId}");
-        SceneManager.LoadScene("Main Menu");
+        //SceneManager.LoadScene("Main Menu");
+        SessionHandler = new();
+        await SessionHandler.CreateSessionAsync("Sheeps", 2);
     }
 
     public async void Connect()
