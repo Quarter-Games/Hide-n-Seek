@@ -49,10 +49,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   speed: 1.5
   InitialSpeed: 1
-  Forward: {fileID: 0}
-  Backward: {fileID: 0}
   TimeToChangeDirection: 1
-  Root: {fileID: 0}
+  spriteRenderer: {fileID: 7485631059188542484}
+  _next: {fileID: 0}
+  _previous: {fileID: 0}
 --- !u!50 &-1112850439913955241
 Rigidbody2D:
   serializedVersion: 4

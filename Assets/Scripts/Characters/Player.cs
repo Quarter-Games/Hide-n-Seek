@@ -1,18 +1,23 @@
+using System;
 using UnityEngine;
 
-public class Player : Character
+public class Player : Character, ILinkedListable
 {
 
     [SerializeField] bl_Joystick Joystick = null;
-    public Sheep RootSheep = null;
-    public int SheepCount = 0;
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
+    public Action<int> CountChanged { get; set; }
+    public ILinkedListable Next { get; set; }
+    [SerializeField] Character _next;
+    public ILinkedListable Previous { get; set; }
+    public void Awake()
     {
-        
+        if (_next is ILinkedListable linked)
+        {
+            Next = linked;
+        }
     }
 
-    // Update is called once per frame
+
     void FixedUpdate()
     {
         var x = Input.GetAxis("Horizontal");
@@ -24,22 +29,26 @@ public class Player : Character
         }
         Move(new Vector2(x, y));
     }
-    public override Character GetLastInList()
+    private void OnTriggerEnter2D(Collider2D collision)
     {
-        if (RootSheep == null)
+        if (collision.TryGetComponent<Wolf>(out var wolf))
         {
-            return this;
+            if (Next != null) (Next as Sheep).OnTriggerEnter2D(collision);
+            (this as ILinkedListable).RemoveAllAfter();
+
         }
-        return RootSheep.GetLastInList();
     }
-    public int GetSheepCount()
+    private void OnCollisionEnter2D(Collision2D collision)
     {
-        if (RootSheep == null)
+        if (collision.collider.TryGetComponent<Wolf>(out var wolf))
         {
-            SheepCount = 0;
-            return 0;
+            if (Next != null) (Next as Sheep).OnCollisionEnter2D(collision);
+            (this as ILinkedListable).RemoveAllAfter();
+
         }
-        SheepCount = RootSheep.GetSheepCountRecursive(0);
-        return SheepCount;
+    }
+    public void Dispose()
+    {
+        Destroy(gameObject);
     }
 }

@@ -26,7 +26,7 @@ Transform:
   m_GameObject: {fileID: 3998289361229433667}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 0.489, z: 0}
   m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 1
   m_Children: []
@@ -137,8 +137,7 @@ MonoBehaviour:
   speed: 3
   InitialSpeed: 3
   Joystick: {fileID: 0}
-  RootSheep: {fileID: 0}
-  SheepCount: 0
+  _next: {fileID: 0}
 --- !u!50 &-5809010907942379666
 Rigidbody2D:
   serializedVersion: 4
